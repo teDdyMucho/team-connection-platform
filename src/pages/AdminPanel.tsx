@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate, Link } from "react-router-dom";
 import { 
   Tabs, 
   TabsContent, 
@@ -29,8 +30,7 @@ import {
   getDocs, 
   updateDoc, 
   onSnapshot, 
-  Timestamp,
-  DocumentData
+  Timestamp
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Employee, EmployeeStatus } from "@/types/employee";
@@ -39,7 +39,7 @@ const AdminPanel = () => {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [activeEmployees, setActiveEmployees] = useState<(EmployeeStatus & {id: string})[]>([]);
-  const [attendanceRecords, setAttendanceRecords] = useState([]);
+  const [attendanceRecords, setAttendanceRecords] = useState<any[]>([]);
   const [newEmployee, setNewEmployee] = useState<Omit<Employee, 'disabled'>>({
     name: "",
     employeeId: "",
@@ -47,6 +47,25 @@ const AdminPanel = () => {
     basicInfo: ""
   });
   const [messageInput, setMessageInput] = useState("");
+  const [currentEmployee, setCurrentEmployee] = useState<Employee | null>(null);
+
+  const navigate = useNavigate();
+
+  // On mount, load current employee from localStorage and redirect if not admin
+  useEffect(() => {
+    const storedEmp = localStorage.getItem("currentEmployee");
+    if (storedEmp) {
+      const emp = JSON.parse(storedEmp);
+      setCurrentEmployee(emp);
+      if (!emp.isAdmin) {
+        // If the user is not admin, send them to EmployeePanel.
+        navigate("/employee");
+      }
+    } else {
+      // No logged in employee? Redirect to login/index.
+      navigate("/");
+    }
+  }, [navigate]);
 
   // Load all employees on mount
   useEffect(() => {
@@ -55,12 +74,12 @@ const AdminPanel = () => {
     // Set up real-time listener for active employees
     const statusCol = collection(db, "status");
     const unsubscribe = onSnapshot(statusCol, (snapshot) => {
-      const activeEmps = [];
+      const activeEmps: (EmployeeStatus & {id: string})[] = [];
       snapshot.forEach(doc => {
         activeEmps.push({
           id: doc.id,
           ...doc.data()
-        });
+        } as EmployeeStatus & {id: string});
       });
       setActiveEmployees(activeEmps);
     });
@@ -72,23 +91,23 @@ const AdminPanel = () => {
   const loadEmployees = async () => {
     try {
       const querySnapshot = await getDocs(collection(db, "employees"));
-      const emps = [];
+      const emps: Employee[] = [];
       
       querySnapshot.forEach(doc => {
         emps.push({
           id: doc.id,
           ...doc.data()
-        });
+        } as Employee);
       });
       
       setEmployees(emps);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error loading employees:", error);
     }
   };
 
   // Show employee attendance records
-  const showEmployeeRecord = async (empId) => {
+  const showEmployeeRecord = async (empId: string) => {
     try {
       const q = query(
         collection(db, "attendance"), 
@@ -96,7 +115,7 @@ const AdminPanel = () => {
       );
       
       const querySnapshot = await getDocs(q);
-      const records = [];
+      const records: any[] = [];
       
       querySnapshot.forEach(doc => {
         records.push({
@@ -112,8 +131,8 @@ const AdminPanel = () => {
       
       // Find and set the selected employee
       const emp = employees.find(e => e.employeeId === empId);
-      setSelectedEmployee(emp);
-    } catch (error) {
+      setSelectedEmployee(emp || null);
+    } catch (error: any) {
       console.error("Error fetching records:", error);
     }
   };
@@ -147,7 +166,7 @@ const AdminPanel = () => {
       });
       
       loadEmployees();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error adding employee:", error);
       alert("Error adding employee: " + error.message);
     }
@@ -164,7 +183,7 @@ const AdminPanel = () => {
       
       alert("Employee updated successfully");
       loadEmployees();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error updating employee:", error);
       alert("Error updating employee: " + error.message);
     }
@@ -179,7 +198,7 @@ const AdminPanel = () => {
       
       alert(`Employee ${emp.name} is now ${emp.disabled ? "enabled" : "disabled"}`);
       loadEmployees();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error toggling employee status:", error);
       alert("Error toggling employee status: " + error.message);
     }
@@ -201,7 +220,7 @@ const AdminPanel = () => {
       
       alert("Message sent successfully");
       setMessageInput("");
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error sending message:", error);
       alert("Error sending message: " + error.message);
     }
@@ -223,7 +242,7 @@ const AdminPanel = () => {
   };
 
   // Handle input change for employee form
-  const handleEmployeeInputChange = (e) => {
+  const handleEmployeeInputChange = (e: any) => {
     const { name, value } = e.target;
     setNewEmployee(prev => ({
       ...prev,
@@ -232,16 +251,41 @@ const AdminPanel = () => {
   };
 
   // Handle input change for existing employee
-  const handleExistingEmployeeChange = (index, field, value) => {
+  const handleExistingEmployeeChange = (index: number, field: string, value: string) => {
     const updatedEmployees = [...employees];
     updatedEmployees[index][field] = value;
     setEmployees(updatedEmployees);
   };
 
+  // Logout function: clear stored user and navigate to login
+  const handleLogout = () => {
+    localStorage.removeItem("currentEmployee");
+    navigate("/");
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 p-4">
       <div className="max-w-7xl mx-auto">
-        <h1 className="text-3xl font-bold mb-6">Admin Panel</h1>
+        {/* Header with navigation and logout */}
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-3xl font-bold">Admin Panel</h1>
+          <div className="flex items-center gap-4">
+            {currentEmployee && (
+              <span className="font-medium">Welcome, {currentEmployee.name}</span>
+            )}
+            <div className="flex gap-2">
+              <Link to="/">
+                <Button variant="outline" size="sm">Index</Button>
+              </Link>
+              <Link to="/employee">
+                <Button variant="outline" size="sm">Employee Panel</Button>
+              </Link>
+              <Button variant="outline" size="sm" onClick={handleLogout}>
+                Logout
+              </Button>
+            </div>
+          </div>
+        </div>
 
         <Tabs defaultValue="monitoring" className="w-full">
           <TabsList className="w-full mb-4">
@@ -265,7 +309,9 @@ const AdminPanel = () => {
                     {activeEmployees.map(emp => (
                       <Card key={emp.id} className="overflow-hidden">
                         <CardHeader className="p-4 pb-2">
-                          <CardTitle className="text-lg">Employee ID: {emp.employeeId || emp.id}</CardTitle>
+                          <CardTitle className="text-lg">
+                            Employee ID: {emp.employeeId || emp.id}
+                          </CardTitle>
                         </CardHeader>
                         <CardContent className="p-4 pt-0">
                           <div className="space-y-2">
