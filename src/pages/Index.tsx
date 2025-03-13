@@ -9,15 +9,17 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { doc, getDoc, setDoc, addDoc, collection, deleteDoc, query, where, getDocs, Timestamp, DocumentData } from "firebase/firestore";
+import { doc, getDoc, setDoc, addDoc, collection, deleteDoc, query, where, getDocs, Timestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Employee, EmployeeStatus, AttendanceRecord, Message } from "@/types/employee";
+import { Link } from "react-router-dom";
 
 const EmployeePanel = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  // Updated type to include isAdmin flag.
+  const [currentEmployee, setCurrentEmployee] = useState<{employeeId: string; name: string; isAdmin: boolean} | null>(null);
   const [employeeId, setEmployeeId] = useState("");
   const [password, setPassword] = useState("");
-  const [currentEmployee, setCurrentEmployee] = useState<{employeeId: string; name: string} | null>(null);
   const [employeeStatus, setEmployeeStatus] = useState<EmployeeStatus>({ status: "Clocked Out", stateStartTime: null });
   const [clockInTime, setClockInTime] = useState<Date | null>(null);
   const [clockInTimer, setClockInTimer] = useState("00:00:00");
@@ -26,7 +28,7 @@ const EmployeePanel = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loginError, setLoginError] = useState("");
 
-  // Timer effect
+  // Timer effect: updates overall clock and break timers every second.
   useEffect(() => {
     let interval: NodeJS.Timeout | null = null;
     
@@ -34,16 +36,18 @@ const EmployeePanel = () => {
       interval = setInterval(() => {
         const now = new Date();
         
-        // Update overall clock timer
+        // Update overall clock timer if clockInTime exists
         if (clockInTime) {
           const diffOverall = now.getTime() - clockInTime.getTime();
           setClockInTimer(formatTime(diffOverall));
         }
         
-        // Update break timer
-        if (employeeStatus.status !== "Working" && 
-            employeeStatus.status !== "Clocked Out" && 
-            employeeStatus.stateStartTime) {
+        // Update break timer if currently on a break (and not Working or Clocked Out)
+        if (
+          employeeStatus.status !== "Working" &&
+          employeeStatus.status !== "Clocked Out" &&
+          employeeStatus.stateStartTime
+        ) {
           const diffBreak = now.getTime() - employeeStatus.stateStartTime.toDate().getTime();
           setBreakTimer(formatTime(diffBreak));
         }
@@ -55,7 +59,7 @@ const EmployeePanel = () => {
     };
   }, [isLoggedIn, clockInTime, employeeStatus]);
 
-  // Helper function to format time
+  // Helper function to format milliseconds into hh:mm:ss format.
   const formatTime = (diff: number) => {
     const hours = Math.floor(diff / (1000 * 60 * 60));
     const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
@@ -65,7 +69,7 @@ const EmployeePanel = () => {
            (seconds < 10 ? "0" + seconds : seconds);
   };
 
-  // Employee login
+  // Employee login handler
   const handleLogin = async () => {
     if (!employeeId || !password) {
       setLoginError("Please enter both Employee ID and Password");
@@ -92,11 +96,16 @@ const EmployeePanel = () => {
         return;
       }
       
-      setCurrentEmployee({ employeeId, name: empData.name });
+      // Save employee details including isAdmin flag.
+      setCurrentEmployee({ 
+        employeeId, 
+        name: empData.name,
+        isAdmin: empData.isAdmin || false
+      });
       setIsLoggedIn(true);
       setLoginError("");
       
-      // Load existing status if available
+      // Load existing status if available.
       const statusDoc = await getDoc(doc(db, "status", employeeId));
       if (statusDoc.exists()) {
         const statusData = statusDoc.data();
@@ -112,7 +121,7 @@ const EmployeePanel = () => {
         }
       }
       
-      // Load messages and attendance history
+      // Load messages and attendance history.
       fetchEmployeeMessages();
       fetchAttendanceHistory();
     } catch (error) {
@@ -137,7 +146,7 @@ const EmployeePanel = () => {
         timestamp: now
       });
       
-      // Update status
+      // Update status: keep clockInTime along with new status.
       const newStatus = { 
         status: "Working", 
         stateStartTime: now,
@@ -166,13 +175,10 @@ const EmployeePanel = () => {
         timestamp: now
       });
       
-      // Update status
+      // Update status and clear timers
       setEmployeeStatus({ status: "Clocked Out", stateStartTime: null });
-      
-      // Delete from status collection
       await deleteDoc(doc(db, "status", currentEmployee.employeeId));
       
-      // Reset timers
       setClockInTime(null);
       setClockInTimer("00:00:00");
       setBreakTimer("00:00:00");
@@ -182,7 +188,7 @@ const EmployeePanel = () => {
   };
 
   // Toggle Break function
-  const toggleBreak = async (breakType) => {
+  const toggleBreak = async (breakType: string) => {
     if (!currentEmployee) return;
     
     const now = Timestamp.now();
@@ -200,13 +206,13 @@ const EmployeePanel = () => {
           status: breakType, 
           stateStartTime: now,
           employeeId: currentEmployee.employeeId,
-          clockInTime: Timestamp.fromDate(clockInTime)
+          clockInTime: Timestamp.fromDate(clockInTime!)
         };
         
         await setDoc(doc(db, "status", currentEmployee.employeeId), newStatus);
         setEmployeeStatus(newStatus);
       } else if (employeeStatus.status === breakType) {
-        // End break
+        // End break and resume working.
         await addDoc(collection(db, "attendance"), {
           employeeId: currentEmployee.employeeId,
           eventType: "end_" + breakType.replace(/ /g, ""),
@@ -217,7 +223,7 @@ const EmployeePanel = () => {
           status: "Working", 
           stateStartTime: now,
           employeeId: currentEmployee.employeeId,
-          clockInTime: Timestamp.fromDate(clockInTime)
+          clockInTime: Timestamp.fromDate(clockInTime!)
         };
         
         await setDoc(doc(db, "status", currentEmployee.employeeId), newStatus);
@@ -228,7 +234,7 @@ const EmployeePanel = () => {
     }
   };
 
-  // Fetch attendance history
+  // Fetch attendance history for History tab
   const fetchAttendanceHistory = async () => {
     if (!currentEmployee) return;
     
@@ -239,13 +245,13 @@ const EmployeePanel = () => {
       );
       
       const querySnapshot = await getDocs(q);
-      const history = [];
+      const history: AttendanceRecord[] = [];
       
       querySnapshot.forEach(doc => {
         history.push({
           id: doc.id,
           ...doc.data()
-        });
+        } as AttendanceRecord);
       });
       
       // Sort by timestamp (newest first)
@@ -262,18 +268,18 @@ const EmployeePanel = () => {
     try {
       const q = query(collection(db, "messages"));
       const querySnapshot = await getDocs(q);
-      const msgs = [];
+      const msgs: Message[] = [];
       
       querySnapshot.forEach(doc => {
         msgs.push({
           id: doc.id,
           ...doc.data()
-        });
+        } as Message);
       });
       
-      // Sort by timestamp (newest first)
+      // Sort messages by timestamp (newest first)
       msgs.sort((a, b) => 
-        b.timestamp?.seconds - a.timestamp?.seconds || 0
+        (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0)
       );
       
       setMessages(msgs);
@@ -282,7 +288,7 @@ const EmployeePanel = () => {
     }
   };
 
-  // Logout function
+  // Logout function clears state.
   const handleLogout = () => {
     setIsLoggedIn(false);
     setCurrentEmployee(null);
@@ -294,8 +300,8 @@ const EmployeePanel = () => {
     setBreakTimer("00:00:00");
   };
 
-  // Determine which break buttons to show and their state
-  const getBreakButtonState = (breakType) => {
+  // Determine break button state
+  const getBreakButtonState = (breakType: string) => {
     if (employeeStatus.status === "Clocked Out") {
       return { visible: false, active: false, disabled: true };
     }
@@ -304,7 +310,6 @@ const EmployeePanel = () => {
       return { visible: true, active: false, disabled: false };
     }
     
-    // On a break
     return { 
       visible: true, 
       active: employeeStatus.status === breakType,
@@ -312,7 +317,7 @@ const EmployeePanel = () => {
     };
   };
 
-  // Login Form
+  // If not logged in, show the login form.
   if (!isLoggedIn) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
@@ -354,6 +359,17 @@ const EmployeePanel = () => {
   return (
     <div className="min-h-screen bg-gray-50 p-4">
       <div className="max-w-5xl mx-auto">
+        {/* Render a switch if the employee is admin */}
+        {currentEmployee?.isAdmin && (
+          <div className="flex justify-end mb-4 gap-4">
+            <Link to="/admin">
+              <Button variant="outline">Admin Panel</Button>
+            </Link>
+            <Link to="/">
+              <Button variant="outline">Index</Button>
+            </Link>
+          </div>
+        )}
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-2xl font-bold">Employee Panel</h1>
           <div className="flex items-center gap-2">
@@ -418,7 +434,6 @@ const EmployeePanel = () => {
                           Clock Out
                         </Button>
                         
-                        {/* Break buttons */}
                         {["Lunch", "Pee Break 1", "Pee Break 2", "Small Break"].map(breakType => {
                           const { visible, active, disabled } = getBreakButtonState(breakType);
                           if (!visible) return null;
