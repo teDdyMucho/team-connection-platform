@@ -27,6 +27,11 @@ const EmployeePanel = () => {
   const [attendanceHistory, setAttendanceHistory] = useState<AttendanceRecord[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [loginError, setLoginError] = useState("");
+  
+  // New state to track employees on the same break (for Pee Break 1 and Pee Break 2)
+  const [breakEmployees, setBreakEmployees] = useState<any[]>([]);
+  // State to track last mouse movement timestamp
+  const [lastMouseMove, setLastMouseMove] = useState(new Date());
 
   // Timer effect: updates overall clock and break timers every second.
   useEffect(() => {
@@ -67,6 +72,76 @@ const EmployeePanel = () => {
     return (hours < 10 ? "0" + hours : hours) + ":" +
            (minutes < 10 ? "0" + minutes : minutes) + ":" +
            (seconds < 10 ? "0" + seconds : seconds);
+  };
+
+  // Listen for mouse movements to update lastMouseMove state
+  useEffect(() => {
+    const handleMouseMove = () => {
+      setLastMouseMove(new Date());
+    };
+    document.addEventListener("mousemove", handleMouseMove);
+    return () => document.removeEventListener("mousemove", handleMouseMove);
+  }, []);
+
+// Idle detection: if no mouse movement for 10 seconds and employee is Working, update status to "Working Idle"
+useEffect(() => {
+  let idleTimeout: NodeJS.Timeout;
+  if (
+    isLoggedIn &&
+    currentEmployee &&
+    employeeStatus.status === "Working"
+  ) {
+    idleTimeout = setTimeout(async () => {
+      const now = new Date();
+      if (now.getTime() - lastMouseMove.getTime() >= 10000) {
+        const newStatus = { 
+          status: "Working Idle", 
+          stateStartTime: Timestamp.now(),
+          employeeId: currentEmployee.employeeId,
+          clockInTime: employeeStatus.clockInTime // keep existing clockInTime
+        };
+        await setDoc(doc(db, "status", currentEmployee.employeeId), newStatus);
+        setEmployeeStatus(newStatus);
+      }
+    }, 10000);
+  }
+  return () => clearTimeout(idleTimeout);
+}, [lastMouseMove, isLoggedIn, employeeStatus, currentEmployee]);
+
+
+  // When the employee's status is Pee Break 1 or Pee Break 2, fetch all employees on the same break
+  useEffect(() => {
+    const fetchBreakEmployees = async () => {
+      if (employeeStatus.status === "Pee Break 1" || employeeStatus.status === "Pee Break 2") {
+        const q = query(collection(db, "status"), where("status", "==", employeeStatus.status));
+        const querySnapshot = await getDocs(q);
+        const breakEmps: any[] = [];
+        querySnapshot.forEach(doc => {
+          breakEmps.push({ id: doc.id, ...doc.data() });
+        });
+        setBreakEmployees(breakEmps);
+      } else {
+        setBreakEmployees([]);
+      }
+    };
+    fetchBreakEmployees();
+  }, [employeeStatus]);
+
+  // Push notification and buzz when starting a break
+  const notifyBreak = () => {
+    // Request permission if not already granted
+    if (Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+    if (Notification.permission === "granted") {
+      new Notification("Break Alert", {
+        body: `You are now on ${employeeStatus.status}.`,
+        // Optionally add an icon: icon: "/path/to/icon.png"
+      });
+    }
+    // Play buzz sound (make sure to have a buzz sound at the given URL)
+    const buzz = new Audio("/buzz.mp3");
+    buzz.play().catch((err) => console.error("Error playing sound:", err));
   };
 
   // Employee login handler
@@ -195,7 +270,7 @@ const EmployeePanel = () => {
     
     try {
       if (employeeStatus.status === "Working") {
-        // Start break
+        // Starting break: add attendance record, update status, and push notification/buzz.
         await addDoc(collection(db, "attendance"), {
           employeeId: currentEmployee.employeeId,
           eventType: "start_" + breakType.replace(/ /g, ""),
@@ -211,8 +286,10 @@ const EmployeePanel = () => {
         
         await setDoc(doc(db, "status", currentEmployee.employeeId), newStatus);
         setEmployeeStatus(newStatus);
+        // Notify the employee
+        notifyBreak();
       } else if (employeeStatus.status === breakType) {
-        // End break and resume working.
+        // Ending break: add attendance record and resume working.
         await addDoc(collection(db, "attendance"), {
           employeeId: currentEmployee.employeeId,
           eventType: "end_" + breakType.replace(/ /g, ""),
@@ -415,6 +492,19 @@ const EmployeePanel = () => {
                       <div className="font-mono text-lg">{breakTimer}</div>
                     </div>
                   </div>
+                  {/* If on Pee Break 1 or Pee Break 2, show a grid of employees on that break */}
+                  {(employeeStatus.status === "Pee Break 1" || employeeStatus.status === "Pee Break 2") && breakEmployees.length > 0 && (
+                    <div className="mt-4">
+                      <h3 className="text-lg font-medium">Employees on {employeeStatus.status}:</h3>
+                      <div className="grid grid-cols-2 gap-2">
+                        {breakEmployees.map(emp => (
+                          <div key={emp.id} className="p-2 border rounded">
+                            {emp.employeeId}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                     {employeeStatus.status === "Clocked Out" ? (
