@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { 
   Tabs, 
@@ -30,16 +29,18 @@ import {
   getDocs, 
   updateDoc, 
   onSnapshot, 
-  Timestamp 
+  Timestamp,
+  DocumentData
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { Employee, EmployeeStatus } from "@/types/employee";
 
 const AdminPanel = () => {
-  const [employees, setEmployees] = useState([]);
-  const [selectedEmployee, setSelectedEmployee] = useState(null);
-  const [activeEmployees, setActiveEmployees] = useState([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
+  const [activeEmployees, setActiveEmployees] = useState<(EmployeeStatus & {id: string})[]>([]);
   const [attendanceRecords, setAttendanceRecords] = useState([]);
-  const [newEmployee, setNewEmployee] = useState({
+  const [newEmployee, setNewEmployee] = useState<Omit<Employee, 'disabled'>>({
     name: "",
     employeeId: "",
     password: "",
@@ -153,7 +154,7 @@ const AdminPanel = () => {
   };
 
   // Update employee details
-  const updateEmployee = async (emp) => {
+  const updateEmployee = async (emp: Employee) => {
     try {
       await updateDoc(doc(db, "employees", emp.employeeId), {
         name: emp.name,
@@ -170,7 +171,7 @@ const AdminPanel = () => {
   };
 
   // Toggle employee disabled status
-  const toggleEmployeeStatus = async (emp) => {
+  const toggleEmployeeStatus = async (emp: Employee) => {
     try {
       await updateDoc(doc(db, "employees", emp.employeeId), {
         disabled: !emp.disabled
@@ -207,12 +208,12 @@ const AdminPanel = () => {
   };
 
   // Format time duration from timestamp
-  const formatDuration = (timestamp) => {
+  const formatDuration = (timestamp: Timestamp | null | undefined) => {
     if (!timestamp) return "N/A";
     
     const now = new Date();
     const start = timestamp.toDate();
-    const diffMs = now - start;
+    const diffMs = now.getTime() - start.getTime();
     
     const hours = Math.floor(diffMs / (1000 * 60 * 60));
     const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));

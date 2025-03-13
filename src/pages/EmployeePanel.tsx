@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { 
   Tabs, 
@@ -10,25 +9,26 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { doc, getDoc, setDoc, addDoc, collection, deleteDoc, query, where, getDocs, Timestamp } from "firebase/firestore";
+import { doc, getDoc, setDoc, addDoc, collection, deleteDoc, query, where, getDocs, Timestamp, DocumentData } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { Employee, EmployeeStatus, AttendanceRecord, Message } from "@/types/employee";
 
 const EmployeePanel = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [employeeId, setEmployeeId] = useState("");
   const [password, setPassword] = useState("");
-  const [currentEmployee, setCurrentEmployee] = useState(null);
-  const [employeeStatus, setEmployeeStatus] = useState({ status: "Clocked Out", stateStartTime: null });
-  const [clockInTime, setClockInTime] = useState(null);
+  const [currentEmployee, setCurrentEmployee] = useState<{employeeId: string; name: string} | null>(null);
+  const [employeeStatus, setEmployeeStatus] = useState<EmployeeStatus>({ status: "Clocked Out", stateStartTime: null });
+  const [clockInTime, setClockInTime] = useState<Date | null>(null);
   const [clockInTimer, setClockInTimer] = useState("00:00:00");
   const [breakTimer, setBreakTimer] = useState("00:00:00");
-  const [attendanceHistory, setAttendanceHistory] = useState([]);
-  const [messages, setMessages] = useState([]);
+  const [attendanceHistory, setAttendanceHistory] = useState<AttendanceRecord[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [loginError, setLoginError] = useState("");
 
   // Timer effect
   useEffect(() => {
-    let interval = null;
+    let interval: NodeJS.Timeout | null = null;
     
     if (isLoggedIn) {
       interval = setInterval(() => {
@@ -36,7 +36,7 @@ const EmployeePanel = () => {
         
         // Update overall clock timer
         if (clockInTime) {
-          const diffOverall = now - clockInTime;
+          const diffOverall = now.getTime() - clockInTime.getTime();
           setClockInTimer(formatTime(diffOverall));
         }
         
@@ -44,7 +44,7 @@ const EmployeePanel = () => {
         if (employeeStatus.status !== "Working" && 
             employeeStatus.status !== "Clocked Out" && 
             employeeStatus.stateStartTime) {
-          const diffBreak = now - employeeStatus.stateStartTime.toDate();
+          const diffBreak = now.getTime() - employeeStatus.stateStartTime.toDate().getTime();
           setBreakTimer(formatTime(diffBreak));
         }
       }, 1000);
@@ -56,7 +56,7 @@ const EmployeePanel = () => {
   }, [isLoggedIn, clockInTime, employeeStatus]);
 
   // Helper function to format time
-  const formatTime = (diff) => {
+  const formatTime = (diff: number) => {
     const hours = Math.floor(diff / (1000 * 60 * 60));
     const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
     const seconds = Math.floor((diff % (1000 * 60)) / 1000);
@@ -99,9 +99,16 @@ const EmployeePanel = () => {
       // Load existing status if available
       const statusDoc = await getDoc(doc(db, "status", employeeId));
       if (statusDoc.exists()) {
-        setEmployeeStatus(statusDoc.data());
-        if (statusDoc.data().clockInTime) {
-          setClockInTime(statusDoc.data().clockInTime.toDate());
+        const statusData = statusDoc.data();
+        setEmployeeStatus({
+          status: statusData.status || "Clocked Out",
+          stateStartTime: statusData.stateStartTime || null,
+          employeeId: statusData.employeeId,
+          clockInTime: statusData.clockInTime
+        });
+        
+        if (statusData.clockInTime) {
+          setClockInTime(statusData.clockInTime.toDate());
         }
       }
       
@@ -500,3 +507,4 @@ const EmployeePanel = () => {
 };
 
 export default EmployeePanel;
+
