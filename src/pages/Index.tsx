@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { app, db } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Link } from "react-router-dom";
 
 const Index = () => {
   const [isFirebaseInitialized, setIsFirebaseInitialized] = useState(false);
@@ -15,8 +16,24 @@ const Index = () => {
   }, []);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <Card className="w-[350px]">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100 p-4">
+      <h1 className="text-3xl font-bold mb-8">Company Employee System</h1>
+      
+      <div className="grid gap-4 w-full max-w-md">
+        <Link to="/employee" className="w-full">
+          <Button className="w-full h-16 text-lg" variant="default">
+            Employee Panel
+          </Button>
+        </Link>
+        
+        <Link to="/admin" className="w-full">
+          <Button className="w-full h-16 text-lg" variant="outline">
+            Admin Panel
+          </Button>
+        </Link>
+      </div>
+      
+      <Card className="w-full max-w-md mt-8">
         <CardHeader>
           <CardTitle>Firebase Status</CardTitle>
         </CardHeader>
