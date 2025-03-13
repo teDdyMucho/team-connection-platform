@@ -30,17 +30,19 @@ import {
   getDocs, 
   updateDoc, 
   onSnapshot, 
-  Timestamp
+  Timestamp 
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { Employee, EmployeeStatus } from "@/types/employee";
+import { Employee, EmployeeStatus, AttendanceRecord, Message } from "@/types/employee";
 
 const AdminPanel = () => {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
-  const [activeEmployees, setActiveEmployees] = useState<(EmployeeStatus & {id: string})[]>([]);
-  const [attendanceRecords, setAttendanceRecords] = useState([]);
-  const [newEmployee, setNewEmployee] = useState<Omit<Employee, 'disabled'>>({
+  const [activeEmployees, setActiveEmployees] = useState<(EmployeeStatus & { id: string })[]>([]);
+  const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
+  // New state for attendance summary records.
+  const [attendanceSummaries, setAttendanceSummaries] = useState<any[]>([]);
+  const [newEmployee, setNewEmployee] = useState<Omit<Employee, "disabled">>({
     name: "",
     employeeId: "",
     password: "",
@@ -48,15 +50,15 @@ const AdminPanel = () => {
   });
   const [messageInput, setMessageInput] = useState("");
 
-  // Load all employees on mount
+  // Load all employees on mount.
   useEffect(() => {
     loadEmployees();
-    
-    // Set up real-time listener for active employees
+
+    // Set up real-time listener for active employees.
     const statusCol = collection(db, "status");
     const unsubscribe = onSnapshot(statusCol, (snapshot) => {
-      const activeEmps = [];
-      snapshot.forEach(doc => {
+      const activeEmps: any[] = [];
+      snapshot.forEach((doc) => {
         activeEmps.push({
           id: doc.id,
           ...doc.data()
@@ -64,69 +66,86 @@ const AdminPanel = () => {
       });
       setActiveEmployees(activeEmps);
     });
-    
     return () => unsubscribe();
   }, []);
 
-  // Load all employees from Firestore
+  // Fetch all employees.
   const loadEmployees = async () => {
     try {
       const querySnapshot = await getDocs(collection(db, "employees"));
-      const emps = [];
-      
-      querySnapshot.forEach(doc => {
+      const emps: Employee[] = [];
+      querySnapshot.forEach((doc) => {
         emps.push({
           id: doc.id,
           ...doc.data()
-        });
+        } as Employee);
       });
-      
       setEmployees(emps);
     } catch (error) {
       console.error("Error loading employees:", error);
     }
   };
 
-  // Show employee attendance records
-  const showEmployeeRecord = async (empId) => {
+  // Show raw attendance records for a selected employee.
+  const showEmployeeRecord = async (empId: string) => {
     try {
-      const q = query(
-        collection(db, "attendance"), 
-        where("employeeId", "==", empId)
-      );
-      
+      const q = query(collection(db, "attendance"), where("employeeId", "==", empId));
       const querySnapshot = await getDocs(q);
-      const records = [];
-      
-      querySnapshot.forEach(doc => {
+      const records: AttendanceRecord[] = [];
+      querySnapshot.forEach((doc) => {
         records.push({
           id: doc.id,
           ...doc.data()
-        });
+        } as AttendanceRecord);
       });
-      
-      // Sort by timestamp (newest first)
+      // Sort newest first.
       records.sort((a, b) => b.timestamp.seconds - a.timestamp.seconds);
-      
       setAttendanceRecords(records);
-      
-      // Find and set the selected employee
-      const emp = employees.find(e => e.employeeId === empId);
-      setSelectedEmployee(emp);
+      const emp = employees.find((e) => e.employeeId === empId);
+      setSelectedEmployee(emp || null);
     } catch (error) {
       console.error("Error fetching records:", error);
     }
   };
 
-  // Add new employee
+  // Fetch attendance summary records for a selected employee.
+  const fetchAttendanceSummaries = async () => {
+    if (!selectedEmployee) return;
+    try {
+      const q = query(
+        collection(db, "attendanceSummary"),
+        where("employeeId", "==", selectedEmployee.employeeId)
+      );
+      const querySnapshot = await getDocs(q);
+      const summaries: any[] = [];
+      querySnapshot.forEach((doc) => {
+        summaries.push({
+          id: doc.id,
+          ...doc.data()
+        });
+      });
+      // Sort by date descending.
+      summaries.sort((a, b) => b.date.seconds - a.date.seconds);
+      setAttendanceSummaries(summaries);
+    } catch (error) {
+      console.error("Error fetching attendance summaries:", error);
+    }
+  };
+
+  // Fetch attendance summaries when selected employee changes.
+  useEffect(() => {
+    if (selectedEmployee) {
+      fetchAttendanceSummaries();
+    }
+  }, [selectedEmployee]);
+
+  // Add new employee.
   const addEmployee = async () => {
     const { name, employeeId, password, basicInfo } = newEmployee;
-    
     if (!name || !employeeId || !password) {
       alert("Please fill in all required fields (Name, Employee ID, Password)");
       return;
     }
-    
     try {
       await setDoc(doc(db, "employees", employeeId), {
         employeeId,
@@ -135,25 +154,21 @@ const AdminPanel = () => {
         basicInfo,
         disabled: false
       });
-      
       alert("Employee added successfully");
-      
-      // Reset form and reload employees
       setNewEmployee({
         name: "",
         employeeId: "",
         password: "",
         basicInfo: ""
       });
-      
       loadEmployees();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error adding employee:", error);
       alert("Error adding employee: " + error.message);
     }
   };
 
-  // Update employee details
+  // Update employee details.
   const updateEmployee = async (emp: Employee) => {
     try {
       await updateDoc(doc(db, "employees", emp.employeeId), {
@@ -161,78 +176,71 @@ const AdminPanel = () => {
         password: emp.password,
         basicInfo: emp.basicInfo
       });
-      
       alert("Employee updated successfully");
       loadEmployees();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error updating employee:", error);
       alert("Error updating employee: " + error.message);
     }
   };
 
-  // Toggle employee disabled status
+  // Toggle employee disabled status.
   const toggleEmployeeStatus = async (emp: Employee) => {
     try {
       await updateDoc(doc(db, "employees", emp.employeeId), {
         disabled: !emp.disabled
       });
-      
       alert(`Employee ${emp.name} is now ${emp.disabled ? "enabled" : "disabled"}`);
       loadEmployees();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error toggling employee status:", error);
       alert("Error toggling employee status: " + error.message);
     }
   };
 
-  // Send a message to all employees
+  // Send message to all employees.
   const sendMessage = async () => {
     if (!messageInput.trim()) {
       alert("Please enter a message");
       return;
     }
-    
     try {
       await addDoc(collection(db, "messages"), {
         sender: "Admin",
         message: messageInput,
         timestamp: Timestamp.now()
       });
-      
       alert("Message sent successfully");
       setMessageInput("");
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error sending message:", error);
       alert("Error sending message: " + error.message);
     }
   };
 
-  // Format time duration from timestamp
+  // Format time duration from a Timestamp.
   const formatDuration = (timestamp: Timestamp | null | undefined) => {
     if (!timestamp) return "N/A";
-    
     const now = new Date();
     const start = timestamp.toDate();
     const diffMs = now.getTime() - start.getTime();
-    
     const hours = Math.floor(diffMs / (1000 * 60 * 60));
     const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
     const seconds = Math.floor((diffMs % (1000 * 60)) / 1000);
-    
-    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
   };
 
-  // Handle input change for employee form
-  const handleEmployeeInputChange = (e) => {
+  // Handle input change for new employee form.
+  const handleEmployeeInputChange = (e: any) => {
     const { name, value } = e.target;
-    setNewEmployee(prev => ({
+    setNewEmployee((prev) => ({
       ...prev,
       [name]: value
     }));
   };
 
-  // Handle input change for existing employee
-  const handleExistingEmployeeChange = (index, field, value) => {
+  // Handle input change for existing employee.
+  const handleExistingEmployeeChange = (index: number, field: string, value: string) => {
     const updatedEmployees = [...employees];
     updatedEmployees[index][field] = value;
     setEmployees(updatedEmployees);
@@ -241,14 +249,13 @@ const AdminPanel = () => {
   return (
     <div className="min-h-screen bg-gray-50 p-4">
       <div className="max-w-7xl mx-auto">
-        {/* Header with Index button at top right */}
+        {/* Header with Index button */}
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-3xl font-bold">Admin Panel</h1>
           <Link to="/">
             <Button variant="outline" size="sm">Index</Button>
           </Link>
         </div>
-
         <Tabs defaultValue="monitoring" className="w-full">
           <TabsList className="w-full mb-4">
             <TabsTrigger value="monitoring" className="flex-1">Monitoring</TabsTrigger>
@@ -268,7 +275,7 @@ const AdminPanel = () => {
                   <div className="text-center py-8 text-gray-500">No active employees</div>
                 ) : (
                   <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    {activeEmployees.map(emp => (
+                    {activeEmployees.map((emp) => (
                       <Card key={emp.id} className="overflow-hidden">
                         <CardHeader className="p-4 pb-2">
                           <CardTitle className="text-lg">
@@ -319,7 +326,7 @@ const AdminPanel = () => {
                     {employees.length === 0 ? (
                       <div className="text-center py-4 text-gray-500">No employees found</div>
                     ) : (
-                      employees.map(emp => (
+                      employees.map((emp) => (
                         <Button
                           key={emp.employeeId}
                           variant={selectedEmployee?.employeeId === emp.employeeId ? "default" : "outline"}
@@ -348,31 +355,59 @@ const AdminPanel = () => {
                     <div className="text-center py-12 text-gray-500">
                       Select an employee to view their attendance records
                     </div>
-                  ) : attendanceRecords.length === 0 ? (
-                    <div className="text-center py-12 text-gray-500">
-                      No attendance records found for this employee
-                    </div>
                   ) : (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Event Type</TableHead>
-                          <TableHead>Timestamp</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {attendanceRecords.map(record => (
-                          <TableRow key={record.id}>
-                            <TableCell className="capitalize">
-                              {record.eventType.replace(/_/g, ' ')}
-                            </TableCell>
-                            <TableCell>
-                              {new Date(record.timestamp.seconds * 1000).toLocaleString()}
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+                    <>
+                      {attendanceRecords.length === 0 ? (
+                        <div className="text-center py-12 text-gray-500">
+                          No attendance records found for this employee
+                        </div>
+                      ) : (
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Event Type</TableHead>
+                              <TableHead>Timestamp</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {attendanceRecords.map((record) => (
+                              <TableRow key={record.id}>
+                                <TableCell className="capitalize">
+                                  {record.eventType.replace(/_/g, " ")}
+                                </TableCell>
+                                <TableCell>
+                                  {new Date(record.timestamp.seconds * 1000).toLocaleString()}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      )}
+                      {/* Attendance Summary Section */}
+                      {attendanceSummaries.length > 0 && (
+                        <div className="mt-4">
+                          <h3 className="text-lg font-medium">Attendance Summary</h3>
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Date</TableHead>
+                                <TableHead>Total Clock</TableHead>
+                                <TableHead>Accumulated Break</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {attendanceSummaries.map((summary) => (
+                                <TableRow key={summary.id}>
+                                  <TableCell>{new Date(summary.date.seconds * 1000).toLocaleString()}</TableCell>
+                                  <TableCell>{formatTime(summary.totalClockTime)}</TableCell>
+                                  <TableCell>{formatTime(summary.accumulatedBreak)}</TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      )}
+                    </>
                   )}
                 </CardContent>
               </Card>
@@ -458,20 +493,20 @@ const AdminPanel = () => {
                             <TableCell>
                               <Input
                                 value={emp.name}
-                                onChange={(e) => handleExistingEmployeeChange(index, 'name', e.target.value)}
+                                onChange={(e) => handleExistingEmployeeChange(index, "name", e.target.value)}
                               />
                             </TableCell>
                             <TableCell>
                               <Input
                                 value={emp.password}
                                 type="password"
-                                onChange={(e) => handleExistingEmployeeChange(index, 'password', e.target.value)}
+                                onChange={(e) => handleExistingEmployeeChange(index, "password", e.target.value)}
                               />
                             </TableCell>
                             <TableCell>
                               <Input
-                                value={emp.basicInfo || ''}
-                                onChange={(e) => handleExistingEmployeeChange(index, 'basicInfo', e.target.value)}
+                                value={emp.basicInfo || ""}
+                                onChange={(e) => handleExistingEmployeeChange(index, "basicInfo", e.target.value)}
                               />
                             </TableCell>
                             <TableCell>
@@ -481,15 +516,11 @@ const AdminPanel = () => {
                             </TableCell>
                             <TableCell>
                               <div className="flex gap-2">
-                                <Button 
-                                  variant="outline" 
-                                  size="sm" 
-                                  onClick={() => updateEmployee(emp)}
-                                >
+                                <Button variant="outline" size="sm" onClick={() => updateEmployee(emp)}>
                                   Save
                                 </Button>
-                                <Button 
-                                  variant={emp.disabled ? "default" : "destructive"} 
+                                <Button
+                                  variant={emp.disabled ? "default" : "destructive"}
                                   size="sm"
                                   onClick={() => toggleEmployeeStatus(emp)}
                                 >
