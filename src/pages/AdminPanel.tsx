@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import { 
   Tabs, 
   TabsContent, 
@@ -29,8 +30,7 @@ import {
   getDocs, 
   updateDoc, 
   onSnapshot, 
-  Timestamp,
-  DocumentData
+  Timestamp
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Employee, EmployeeStatus } from "@/types/employee";
@@ -241,7 +241,13 @@ const AdminPanel = () => {
   return (
     <div className="min-h-screen bg-gray-50 p-4">
       <div className="max-w-7xl mx-auto">
-        <h1 className="text-3xl font-bold mb-6">Admin Panel</h1>
+        {/* Header with Index button at top right */}
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-3xl font-bold">Admin Panel</h1>
+          <Link to="/">
+            <Button variant="outline" size="sm">Index</Button>
+          </Link>
+        </div>
 
         <Tabs defaultValue="monitoring" className="w-full">
           <TabsList className="w-full mb-4">
@@ -265,7 +271,9 @@ const AdminPanel = () => {
                     {activeEmployees.map(emp => (
                       <Card key={emp.id} className="overflow-hidden">
                         <CardHeader className="p-4 pb-2">
-                          <CardTitle className="text-lg">Employee ID: {emp.employeeId || emp.id}</CardTitle>
+                          <CardTitle className="text-lg">
+                            Employee ID: {emp.employeeId || emp.id}
+                          </CardTitle>
                         </CardHeader>
                         <CardContent className="p-4 pt-0">
                           <div className="space-y-2">
