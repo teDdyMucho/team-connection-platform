@@ -1,10 +1,5 @@
 import { useState, useEffect } from "react";
-import { 
-  Tabs, 
-  TabsContent, 
-  TabsList, 
-  TabsTrigger 
-} from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -15,32 +10,28 @@ import { Employee, EmployeeStatus, AttendanceRecord, Message } from "@/types/emp
 import { Link } from "react-router-dom";
 
 const EmployeePanel = () => {
-  // For this version, we assume the employee is already logged in.
-  // Set the current employee via props, context, or any other method.
-  // Here, we hardcode an example for demonstration.
-  const [currentEmployee] = useState<{employeeId: string; name: string; isAdmin: boolean}>({
-    employeeId: "emp001",
-    name: "John Doe",
-    isAdmin: false
-  });
-
+  // Retrieve current employee from localStorage.
+  const storedEmployee = localStorage.getItem("currentEmployee");
+  const initialEmployee = storedEmployee ? JSON.parse(storedEmployee) : null;
+  const [isLoggedIn] = useState(initialEmployee ? true : false);
+  const [currentEmployee] = useState<{employeeId: string; name: string; isAdmin: boolean} | null>(initialEmployee);
   const [employeeStatus, setEmployeeStatus] = useState<EmployeeStatus>({ status: "Clocked Out", stateStartTime: null });
   const [clockInTime, setClockInTime] = useState<Date | null>(null);
   const [clockInTimer, setClockInTimer] = useState("00:00:00");
   const [breakTimer, setBreakTimer] = useState("00:00:00");
+  // accumulatedBreakMs is added only to Break Timer
   const [accumulatedBreakMs, setAccumulatedBreakMs] = useState(0);
   const [attendanceHistory, setAttendanceHistory] = useState<AttendanceRecord[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
-  
-  // New state for listing employees on the same break (for Pee Break 1 & 2)
+
+  // New state for employees on the same break (for Pee Break 1 & 2)
   const [breakEmployees, setBreakEmployees] = useState<any[]>([]);
-  // State to track last mouse movement time (for idle detection)
+  // Last mouse movement time (for idle detection)
   const [lastMouseMove, setLastMouseMove] = useState(new Date());
 
-  // Timer effect: update overall clock and break timers every second.
+  // Update overall Clock Timer and Break Timer every second.
   useEffect(() => {
-    let interval: NodeJS.Timeout | null = null;
-    interval = setInterval(() => {
+    const interval = setInterval(() => {
       const now = new Date();
       if (clockInTime) {
         const diffOverall = now.getTime() - clockInTime.getTime();
@@ -51,18 +42,16 @@ const EmployeePanel = () => {
         employeeStatus.status !== "Clocked Out" &&
         employeeStatus.stateStartTime
       ) {
+        // Break Timer shows accumulated break time plus current segment.
         const currentBreak = now.getTime() - employeeStatus.stateStartTime.toDate().getTime();
         setBreakTimer(formatTime(accumulatedBreakMs + currentBreak));
       } else {
         setBreakTimer("00:00:00");
       }
     }, 1000);
-    return () => {
-      if (interval) clearInterval(interval);
-    };
+    return () => clearInterval(interval);
   }, [clockInTime, employeeStatus, accumulatedBreakMs]);
 
-  // Helper: format milliseconds to hh:mm:ss.
   const formatTime = (diff: number) => {
     const hours = Math.floor(diff / (1000 * 60 * 60));
     const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
@@ -72,7 +61,7 @@ const EmployeePanel = () => {
            (seconds < 10 ? "0" + seconds : seconds);
   };
 
-  // Global mouse move listener for idle detection.
+  // Global mousemove listener.
   useEffect(() => {
     const handleMouseMove = () => {
       setLastMouseMove(new Date());
@@ -84,7 +73,7 @@ const EmployeePanel = () => {
   // Idle detection: if no mouse movement for 10 sec while "Working", update status to "Working Idle".
   useEffect(() => {
     let idleTimeout: NodeJS.Timeout;
-    if (employeeStatus.status === "Working") {
+    if (isLoggedIn && currentEmployee && employeeStatus.status === "Working") {
       idleTimeout = setTimeout(async () => {
         const now = new Date();
         if (now.getTime() - lastMouseMove.getTime() >= 10000) {
@@ -100,7 +89,7 @@ const EmployeePanel = () => {
       }, 10000);
     }
     return () => clearTimeout(idleTimeout);
-  }, [lastMouseMove, employeeStatus]);
+  }, [lastMouseMove, isLoggedIn, employeeStatus, currentEmployee]);
 
   // Fetch employees on the same break (for Pee Break 1 or Pee Break 2).
   useEffect(() => {
@@ -120,15 +109,16 @@ const EmployeePanel = () => {
     fetchBreakEmployees();
   }, [employeeStatus]);
 
-  // Push Notification & Buzz: every 3 seconds when on break or Working Idle.
+  // Push Notification & Buzz every 3 seconds when on break or Working Idle.
   useEffect(() => {
     let notifInterval: NodeJS.Timeout;
     if (
-      employeeStatus.status === "Pee Break 1" ||
-      employeeStatus.status === "Pee Break 2" ||
-      employeeStatus.status === "Lunch" ||
-      employeeStatus.status === "Small Break" ||
-      employeeStatus.status === "Working Idle"
+      isLoggedIn &&
+      (employeeStatus.status === "Pee Break 1" ||
+       employeeStatus.status === "Pee Break 2" ||
+       employeeStatus.status === "Lunch" ||
+       employeeStatus.status === "Small Break" ||
+       employeeStatus.status === "Working Idle")
     ) {
       notifInterval = setInterval(() => {
         notifyBreak();
@@ -137,9 +127,8 @@ const EmployeePanel = () => {
     return () => {
       if (notifInterval) clearInterval(notifInterval);
     };
-  }, [employeeStatus.status]);
+  }, [employeeStatus.status, isLoggedIn]);
 
-  // Function: Notify (push notification & buzz sound).
   const notifyBreak = () => {
     if (Notification.permission === "default") {
       Notification.requestPermission();
@@ -153,11 +142,9 @@ const EmployeePanel = () => {
     buzz.play().catch((err) => console.error("Error playing sound:", err));
   };
 
-  // Clock In function.
   const clockIn = async () => {
     const now = Timestamp.now();
-    const nowDate = now.toDate();
-    setClockInTime(nowDate);
+    setClockInTime(now.toDate());
     try {
       await addDoc(collection(db, "attendance"), {
         employeeId: currentEmployee.employeeId,
@@ -177,7 +164,6 @@ const EmployeePanel = () => {
     }
   };
 
-  // Clock Out function.
   const clockOut = async () => {
     const now = Timestamp.now();
     try {
@@ -197,7 +183,6 @@ const EmployeePanel = () => {
     }
   };
 
-  // Toggle Break function.
   const toggleBreak = async (breakType: string) => {
     const now = Timestamp.now();
     if (employeeStatus.status === "Working") {
@@ -258,7 +243,6 @@ const EmployeePanel = () => {
     }
   };
 
-  // Resume Working from a Working Idle state.
   const resumeWorking = async () => {
     const now = Timestamp.now();
     await addDoc(collection(db, "attendance"), {
@@ -276,7 +260,6 @@ const EmployeePanel = () => {
     setEmployeeStatus(newStatus);
   };
 
-  // Fetch attendance history.
   const fetchAttendanceHistory = async () => {
     try {
       const q = query(
@@ -298,7 +281,6 @@ const EmployeePanel = () => {
     }
   };
 
-  // Fetch employee messages.
   const fetchEmployeeMessages = async () => {
     try {
       const q = query(collection(db, "messages"));
@@ -317,19 +299,13 @@ const EmployeePanel = () => {
     }
   };
 
-  // Logout function.
   const handleLogout = () => {
-    // In a real application, handle logout logic (clear tokens, context, etc.)
-    // Here we simply reset the state.
-    setCurrentEmployee(null);
-    setEmployeeStatus({ status: "Clocked Out", stateStartTime: null });
-    setClockInTime(null);
-    setClockInTimer("00:00:00");
-    setBreakTimer("00:00:00");
-    setAccumulatedBreakMs(0);
+    // In a real application, you might clear tokens or context.
+    localStorage.removeItem("currentEmployee");
+    // Reset state (for demonstration, we simply reload the page)
+    window.location.reload();
   };
 
-  // Determine break button state.
   const getBreakButtonState = (breakType: string) => {
     if (employeeStatus.status === "Clocked Out") {
       return { visible: false, active: false, disabled: true };
