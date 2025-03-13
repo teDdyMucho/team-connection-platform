@@ -10,10 +10,11 @@ import {
   deleteDoc,
   updateDoc,
   addDoc,
-  Timestamp 
+  Timestamp,
+  onSnapshot
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { Employee, AttendanceRecord, Message } from "@/types/employee";
+import { Employee, AttendanceRecord, Message, EmployeeStatus } from "@/types/employee";
 import { 
   Tabs, 
   TabsContent, 
@@ -25,9 +26,13 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatTime } from "@/utils/formatTime";
+import EmployeeAttendanceDialog from "@/components/EmployeeAttendanceDialog";
+import { format } from "date-fns";
+import { Activity, Clock, User } from "lucide-react";
 
 const AdminPanel = () => {
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [activeEmployees, setActiveEmployees] = useState<EmployeeStatus[]>([]);
   const [newEmployee, setNewEmployee] = useState<Omit<Employee, 'id'>>({
     name: "",
     employeeId: "",
@@ -44,13 +49,29 @@ const AdminPanel = () => {
     message: "",
     timestamp: Timestamp.now(),
   });
+  const [selectedAttendanceEmployee, setSelectedAttendanceEmployee] = useState<Employee | null>(null);
+  const [isAttendanceDialogOpen, setIsAttendanceDialogOpen] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
     fetchEmployees();
     fetchAttendanceHistory();
     fetchMessages();
+    subscribeToActiveEmployees();
   }, []);
+
+  const subscribeToActiveEmployees = () => {
+    const q = query(collection(db, "employee_status"));
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      const statuses: EmployeeStatus[] = [];
+      querySnapshot.forEach((doc) => {
+        statuses.push(doc.data() as EmployeeStatus);
+      });
+      setActiveEmployees(statuses);
+    });
+    
+    return unsubscribe;
+  };
 
   const fetchEmployees = async () => {
     try {
@@ -196,6 +217,24 @@ const AdminPanel = () => {
     }
   };
 
+  const handleViewEmployeeAttendance = (employee: Employee) => {
+    setSelectedAttendanceEmployee(employee);
+    setIsAttendanceDialogOpen(true);
+  };
+
+  const getActiveTime = (status: EmployeeStatus) => {
+    if (!status.stateStartTime) return "N/A";
+    const now = new Date().getTime();
+    const startTime = status.stateStartTime.toDate().getTime();
+    return formatTime(now - startTime);
+  };
+
+  const getEmployeeName = (employeeId: string | undefined) => {
+    if (!employeeId) return "Unknown";
+    const employee = employees.find(emp => emp.employeeId === employeeId);
+    return employee ? employee.name : employeeId;
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 p-4">
       <div className="max-w-5xl mx-auto">
@@ -211,6 +250,7 @@ const AdminPanel = () => {
         <Tabs defaultValue="employees" className="w-full">
           <TabsList className="w-full mb-4">
             <TabsTrigger value="employees" className="flex-1">Employees</TabsTrigger>
+            <TabsTrigger value="active" className="flex-1">Active Employees</TabsTrigger>
             <TabsTrigger value="attendance" className="flex-1">Attendance</TabsTrigger>
             <TabsTrigger value="messages" className="flex-1">Messages</TabsTrigger>
           </TabsList>
@@ -357,6 +397,50 @@ const AdminPanel = () => {
             </Card>
           </TabsContent>
 
+          {/* Active Employees Monitoring Tab */}
+          <TabsContent value="active">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  <Activity className="h-5 w-5" />
+                  Active Employees Monitoring
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {activeEmployees.length === 0 ? (
+                  <p className="text-center text-gray-500 py-8">No active employees</p>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {activeEmployees.map((status, index) => (
+                      <Card key={index} className="overflow-hidden">
+                        <CardHeader className="p-4 pb-2 flex flex-row items-center gap-2">
+                          <User className="h-4 w-4" />
+                          <CardTitle className="text-base">{getEmployeeName(status.employeeId)}</CardTitle>
+                        </CardHeader>
+                        <CardContent className="p-4 pt-2">
+                          <div className="flex justify-between items-center">
+                            <Badge variant={status.status === "online" ? "default" : "secondary"}>
+                              {status.status}
+                            </Badge>
+                            <div className="flex items-center gap-1 text-sm text-gray-500">
+                              <Clock className="h-3 w-3" />
+                              {getActiveTime(status)}
+                            </div>
+                          </div>
+                          {status.clockInTime && (
+                            <div className="mt-2 text-xs text-gray-500">
+                              Clocked in at: {format(status.clockInTime.toDate(), 'h:mm a, MMM dd')}
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
           {/* Attendance Tab */}
           <TabsContent value="attendance">
             <Card>
@@ -367,6 +451,25 @@ const AdminPanel = () => {
                 </Button>
               </CardHeader>
               <CardContent>
+                <div className="mb-4">
+                  <h3 className="text-lg font-medium mb-2">Employee Attendance Records</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {employees.map(employee => (
+                      <Card key={employee.id} className="overflow-hidden cursor-pointer hover:shadow-md transition-shadow" 
+                        onClick={() => handleViewEmployeeAttendance(employee)}>
+                        <CardContent className="p-4 flex items-center gap-3">
+                          <User className="h-5 w-5 text-gray-500" />
+                          <div>
+                            <p className="font-medium">{employee.name}</p>
+                            <p className="text-sm text-gray-500">{employee.employeeId}</p>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+                
+                <h3 className="text-lg font-medium mb-2">Recent Activity</h3>
                 {attendanceHistory.length === 0 ? (
                   <p className="text-center text-gray-500 py-8">No history found</p>
                 ) : (
@@ -377,7 +480,7 @@ const AdminPanel = () => {
                           {record.employeeId} - {record.eventType.replace(/_/g, ' ')}
                         </span>
                         <span className="text-gray-500">
-                          {new Date(record.timestamp.seconds * 1000).toLocaleString()}
+                          {record.timestamp.toDate().toLocaleString()}
                         </span>
                       </div>
                     ))}
@@ -417,7 +520,7 @@ const AdminPanel = () => {
                       <div className="flex justify-between">
                         <span className="font-medium">{message.sender}</span>
                         <span className="text-sm text-gray-500">
-                          {new Date(message.timestamp.seconds * 1000).toLocaleString()}
+                          {message.timestamp.toDate().toLocaleString()}
                         </span>
                       </div>
                       <p className="mt-1">{message.message}</p>
@@ -429,6 +532,15 @@ const AdminPanel = () => {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Employee Attendance Dialog */}
+      {selectedAttendanceEmployee && (
+        <EmployeeAttendanceDialog 
+          isOpen={isAttendanceDialogOpen}
+          onClose={() => setIsAttendanceDialogOpen(false)}
+          employee={selectedAttendanceEmployee}
+        />
+      )}
     </div>
   );
 };

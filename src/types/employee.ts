@@ -31,3 +31,10 @@ export interface Message {
   message: string;
   timestamp: Timestamp;
 }
+
+export interface AttendanceSummary {
+  date: string;
+  clockIn?: string;
+  clockOut?: string;
+  totalHours?: string;
+}
