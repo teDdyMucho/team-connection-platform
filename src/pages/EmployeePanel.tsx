@@ -1,10 +1,5 @@
 import { useState, useEffect } from "react";
-import { 
-  Tabs, 
-  TabsContent, 
-  TabsList, 
-  TabsTrigger 
-} from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -15,26 +10,27 @@ import { Employee, EmployeeStatus, AttendanceRecord, Message } from "@/types/emp
 import { Link } from "react-router-dom";
 
 const EmployeePanel = () => {
-  // Assume the employee is already logged in (retrieved from localStorage or context)
+  // Assume currentEmployee is already stored (e.g. from localStorage)
   const storedEmployee = localStorage.getItem("currentEmployee");
   const initialEmployee = storedEmployee ? JSON.parse(storedEmployee) : null;
   const [isLoggedIn] = useState(initialEmployee ? true : false);
   const [currentEmployee] = useState<{employeeId: string; name: string; isAdmin: boolean} | null>(initialEmployee);
+  
   const [employeeStatus, setEmployeeStatus] = useState<EmployeeStatus>({ status: "Clocked Out", stateStartTime: null });
   const [clockInTime, setClockInTime] = useState<Date | null>(null);
   const [clockInTimer, setClockInTimer] = useState("00:00:00");
   const [breakTimer, setBreakTimer] = useState("00:00:00");
-  // accumulatedBreakMs is added only to Break Timer
+  // accumulatedBreakMs is added to Break Timer; note: we no longer reset it when a break is done.
   const [accumulatedBreakMs, setAccumulatedBreakMs] = useState(0);
   const [attendanceHistory, setAttendanceHistory] = useState<AttendanceRecord[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
 
-  // New state for listing employees on the same break (for Pee Break 1 & 2)
+  // List of employees on pee break (both Pee Break 1 and Pee Break 2)
   const [breakEmployees, setBreakEmployees] = useState<any[]>([]);
-  // State to track last mouse movement time (for idle detection)
+  // Track last mouse movement for idle detection
   const [lastMouseMove, setLastMouseMove] = useState(new Date());
 
-  // Timer effect: update overall clock and break timers every second.
+  // Timer effect: update Clock Timer and Break Timer every second.
   useEffect(() => {
     const interval = setInterval(() => {
       const now = new Date();
@@ -47,7 +43,7 @@ const EmployeePanel = () => {
         employeeStatus.status !== "Clocked Out" &&
         employeeStatus.stateStartTime
       ) {
-        // Break Timer shows accumulated break time plus current segment.
+        // Break Timer shows the accumulated break time plus the current segment.
         const currentBreak = now.getTime() - employeeStatus.stateStartTime.toDate().getTime();
         setBreakTimer(formatTime(accumulatedBreakMs + currentBreak));
       } else {
@@ -66,7 +62,7 @@ const EmployeePanel = () => {
            (seconds < 10 ? "0" + seconds : seconds);
   };
 
-  // Global mouse move listener for idle detection.
+  // Global mousemove listener for idle detection.
   useEffect(() => {
     const handleMouseMove = () => {
       setLastMouseMove(new Date());
@@ -96,25 +92,21 @@ const EmployeePanel = () => {
     return () => clearTimeout(idleTimeout);
   }, [lastMouseMove, isLoggedIn, employeeStatus, currentEmployee]);
 
-  // Fetch employees on the same break (for Pee Break 1 or Pee Break 2).
+  // Always fetch employees on Pee Break (both 1 and 2) regardless of current status.
   useEffect(() => {
-    const fetchBreakEmployees = async () => {
-      if (employeeStatus.status === "Pee Break 1" || employeeStatus.status === "Pee Break 2") {
-        const q = query(collection(db, "status"), where("status", "==", employeeStatus.status));
-        const querySnapshot = await getDocs(q);
-        const breakEmps: any[] = [];
-        querySnapshot.forEach(doc => {
-          breakEmps.push({ id: doc.id, ...doc.data() });
-        });
-        setBreakEmployees(breakEmps);
-      } else {
-        setBreakEmployees([]);
-      }
+    const fetchPeeBreakEmployees = async () => {
+      const q = query(collection(db, "status"), where("status", "in", ["Pee Break 1", "Pee Break 2"]));
+      const querySnapshot = await getDocs(q);
+      const peeBreakEmps: any[] = [];
+      querySnapshot.forEach(doc => {
+        peeBreakEmps.push({ id: doc.id, ...doc.data() });
+      });
+      setBreakEmployees(peeBreakEmps);
     };
-    fetchBreakEmployees();
-  }, [employeeStatus]);
+    fetchPeeBreakEmployees();
+  }, []);
 
-  // Push Notification & Buzz: every 3 seconds when on break or Working Idle.
+  // Push Notification & Buzz every 3 sec when on break or Working Idle.
   useEffect(() => {
     let notifInterval: NodeJS.Timeout;
     if (
@@ -182,7 +174,8 @@ const EmployeePanel = () => {
       setClockInTime(null);
       setClockInTimer("00:00:00");
       setBreakTimer("00:00:00");
-      setAccumulatedBreakMs(0);
+      // Optionally, you might reset accumulatedBreakMs on clock out (or keep it if needed).
+      // setAccumulatedBreakMs(0);
     } catch (error) {
       console.error("Clock out error:", error);
     }
@@ -190,6 +183,7 @@ const EmployeePanel = () => {
 
   const toggleBreak = async (breakType: string) => {
     const now = Timestamp.now();
+    // If currently Working, start a break.
     if (employeeStatus.status === "Working") {
       setAccumulatedBreakMs(0);
       await addDoc(collection(db, "attendance"), {
@@ -206,8 +200,11 @@ const EmployeePanel = () => {
       await setDoc(doc(db, "status", currentEmployee.employeeId), newStatus);
       setEmployeeStatus(newStatus);
       notifyBreak();
-    } else if (employeeStatus.status === breakType) {
+    } 
+    // If already on this break, end it.
+    else if (employeeStatus.status === breakType) {
       const elapsed = Date.now() - employeeStatus.stateStartTime.toDate().getTime();
+      // Accumulate the break duration; do NOT reset accumulatedBreakMs.
       setAccumulatedBreakMs(prev => prev + elapsed);
       await addDoc(collection(db, "attendance"), {
         employeeId: currentEmployee.employeeId,
@@ -222,8 +219,10 @@ const EmployeePanel = () => {
       };
       await setDoc(doc(db, "status", currentEmployee.employeeId), newStatus);
       setEmployeeStatus(newStatus);
-      setAccumulatedBreakMs(0);
-    } else if (employeeStatus.status !== "Working" && employeeStatus.status !== breakType) {
+      // Note: We no longer reset accumulatedBreakMs here.
+    } 
+    // Switching from one break to a different break.
+    else if (employeeStatus.status !== "Working" && employeeStatus.status !== breakType) {
       const elapsed = Date.now() - employeeStatus.stateStartTime.toDate().getTime();
       setAccumulatedBreakMs(prev => prev + elapsed);
       await addDoc(collection(db, "attendance"), {
@@ -381,14 +380,15 @@ const EmployeePanel = () => {
                       <div className="font-mono text-lg">{breakTimer}</div>
                     </div>
                   </div>
-                  {/* New label: Accumulated Break */}
+                  {/* New label to show Accumulated Break Time */}
                   <div className="mt-4">
                     <div className="text-sm text-gray-500 mb-1">Accumulated Break</div>
                     <div className="font-mono text-lg">{formatTime(accumulatedBreakMs)}</div>
                   </div>
-                  {(employeeStatus.status === "Pee Break 1" || employeeStatus.status === "Pee Break 2") && breakEmployees.length > 0 && (
+                  {/* Display list of employees on Pee Break (1 or 2) for all employees */}
+                  {breakEmployees.length > 0 && (
                     <div className="mt-4">
-                      <h3 className="text-lg font-medium">Employees on {employeeStatus.status}:</h3>
+                      <h3 className="text-lg font-medium">Employees on Pee Break:</h3>
                       <div className="grid grid-cols-2 gap-2">
                         {breakEmployees.map(emp => (
                           <div key={emp.id} className="p-2 border rounded">
