@@ -24,6 +24,7 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Employee, EmployeeStatus, AttendanceRecord, Message } from "@/types/employee";
+import { formatTime } from "@/utils/formatTime";
 
 const EmployeePanel = () => {
   // Retrieve current employee from localStorage.
@@ -95,15 +96,6 @@ const EmployeePanel = () => {
     }, 1000);
     return () => clearInterval(interval);
   }, [clockInTime, employeeStatus, accumulatedBreakMs]);
-
-  const formatTime = (diff: number) => {
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-    return (hours < 10 ? "0" + hours : hours) + ":" +
-           (minutes < 10 ? "0" + minutes : minutes) + ":" +
-           (seconds < 10 ? "0" + seconds : seconds);
-  };
 
   // Global mouse move listener.
   useEffect(() => {
