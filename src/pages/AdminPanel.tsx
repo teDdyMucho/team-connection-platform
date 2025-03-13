@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { 
@@ -50,6 +49,11 @@ const AdminPanel = () => {
     timestamp: Timestamp.now(),
   });
   const [selectedAttendanceEmployee, setSelectedAttendanceEmployee] = useState<Employee | null>(null);
+  // New state to store filtered attendance data for the selected employee:
+  const [selectedAttendanceData, setSelectedAttendanceData] = useState<{
+    attendanceSummary: Record<string, number>;
+    attendance: AttendanceRecord[];
+  } | null>(null);
   const [isAttendanceDialogOpen, setIsAttendanceDialogOpen] = useState(false);
   const navigate = useNavigate();
 
@@ -60,14 +64,29 @@ const AdminPanel = () => {
     subscribeToActiveEmployees();
   }, []);
 
+  // Modified subscription: only update state if there are meaningful changes.
   const subscribeToActiveEmployees = () => {
     const q = query(collection(db, "status"));
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const statuses: EmployeeStatus[] = [];
       querySnapshot.forEach((doc) => {
-        statuses.push(doc.data() as EmployeeStatus);
+        // Include the document id to help with comparison.
+        statuses.push({ id: doc.id, ...doc.data() } as EmployeeStatus);
       });
-      setActiveEmployees(statuses);
+      setActiveEmployees(prev => {
+        // Simple check: compare length and key fields.
+        if (
+          prev.length === statuses.length &&
+          prev.every((s, index) =>
+            s.id === statuses[index].id &&
+            s.status === statuses[index].status &&
+            s.stateStartTime.seconds === statuses[index].stateStartTime.seconds
+          )
+        ) {
+          return prev;
+        }
+        return statuses;
+      });
     });
     
     return unsubscribe;
@@ -217,8 +236,15 @@ const AdminPanel = () => {
     }
   };
 
+  // Modified handler: filter attendance records for the employee and compute a summary.
   const handleViewEmployeeAttendance = (employee: Employee) => {
+    const employeeAttendance = attendanceHistory.filter(record => record.employeeId === employee.employeeId);
+    const summary = employeeAttendance.reduce((acc, record) => {
+      acc[record.eventType] = (acc[record.eventType] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
     setSelectedAttendanceEmployee(employee);
+    setSelectedAttendanceData({ attendanceSummary: summary, attendance: employeeAttendance });
     setIsAttendanceDialogOpen(true);
   };
 
@@ -455,8 +481,11 @@ const AdminPanel = () => {
                   <h3 className="text-lg font-medium mb-2">Employee Attendance Records</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {employees.map(employee => (
-                      <Card key={employee.id} className="overflow-hidden cursor-pointer hover:shadow-md transition-shadow" 
-                        onClick={() => handleViewEmployeeAttendance(employee)}>
+                      <Card
+                        key={employee.id}
+                        className="overflow-hidden cursor-pointer hover:shadow-md transition-shadow" 
+                        onClick={() => handleViewEmployeeAttendance(employee)}
+                      >
                         <CardContent className="p-4 flex items-center gap-3">
                           <User className="h-5 w-5 text-gray-500" />
                           <div>
@@ -533,12 +562,14 @@ const AdminPanel = () => {
         </Tabs>
       </div>
 
-      {/* Employee Attendance Dialog */}
-      {selectedAttendanceEmployee && (
+      {/* Employee Attendance Dialog with additional props */}
+      {selectedAttendanceEmployee && selectedAttendanceData && (
         <EmployeeAttendanceDialog 
           isOpen={isAttendanceDialogOpen}
           onClose={() => setIsAttendanceDialogOpen(false)}
           employee={selectedAttendanceEmployee}
+          attendanceSummary={selectedAttendanceData.attendanceSummary}
+          attendance={selectedAttendanceData.attendance}
         />
       )}
     </div>
