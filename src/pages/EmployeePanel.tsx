@@ -15,11 +15,15 @@ import { Employee, EmployeeStatus, AttendanceRecord, Message } from "@/types/emp
 import { Link } from "react-router-dom";
 
 const EmployeePanel = () => {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  // Include isAdmin flag in current employee.
-  const [currentEmployee, setCurrentEmployee] = useState<{employeeId: string; name: string; isAdmin: boolean} | null>(null);
-  const [employeeId, setEmployeeId] = useState("");
-  const [password, setPassword] = useState("");
+  // For this version, we assume the employee is already logged in.
+  // Set the current employee via props, context, or any other method.
+  // Here, we hardcode an example for demonstration.
+  const [currentEmployee] = useState<{employeeId: string; name: string; isAdmin: boolean}>({
+    employeeId: "emp001",
+    name: "John Doe",
+    isAdmin: false
+  });
+
   const [employeeStatus, setEmployeeStatus] = useState<EmployeeStatus>({ status: "Clocked Out", stateStartTime: null });
   const [clockInTime, setClockInTime] = useState<Date | null>(null);
   const [clockInTimer, setClockInTimer] = useState("00:00:00");
@@ -27,8 +31,7 @@ const EmployeePanel = () => {
   const [accumulatedBreakMs, setAccumulatedBreakMs] = useState(0);
   const [attendanceHistory, setAttendanceHistory] = useState<AttendanceRecord[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [loginError, setLoginError] = useState("");
-
+  
   // New state for listing employees on the same break (for Pee Break 1 & 2)
   const [breakEmployees, setBreakEmployees] = useState<any[]>([]);
   // State to track last mouse movement time (for idle detection)
@@ -37,32 +40,27 @@ const EmployeePanel = () => {
   // Timer effect: update overall clock and break timers every second.
   useEffect(() => {
     let interval: NodeJS.Timeout | null = null;
-    if (isLoggedIn) {
-      interval = setInterval(() => {
-        const now = new Date();
-        // Overall clock timer (if clockInTime exists)
-        if (clockInTime) {
-          const diffOverall = now.getTime() - clockInTime.getTime();
-          setClockInTimer(formatTime(diffOverall));
-        }
-        // Break timer: if employee is not working or clocked out and stateStartTime exists,
-        // display accumulated break time + current segment.
-        if (
-          employeeStatus.status !== "Working" &&
-          employeeStatus.status !== "Clocked Out" &&
-          employeeStatus.stateStartTime
-        ) {
-          const currentBreak = now.getTime() - employeeStatus.stateStartTime.toDate().getTime();
-          setBreakTimer(formatTime(accumulatedBreakMs + currentBreak));
-        } else {
-          setBreakTimer("00:00:00");
-        }
-      }, 1000);
-    }
+    interval = setInterval(() => {
+      const now = new Date();
+      if (clockInTime) {
+        const diffOverall = now.getTime() - clockInTime.getTime();
+        setClockInTimer(formatTime(diffOverall));
+      }
+      if (
+        employeeStatus.status !== "Working" &&
+        employeeStatus.status !== "Clocked Out" &&
+        employeeStatus.stateStartTime
+      ) {
+        const currentBreak = now.getTime() - employeeStatus.stateStartTime.toDate().getTime();
+        setBreakTimer(formatTime(accumulatedBreakMs + currentBreak));
+      } else {
+        setBreakTimer("00:00:00");
+      }
+    }, 1000);
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [isLoggedIn, clockInTime, employeeStatus, accumulatedBreakMs]);
+  }, [clockInTime, employeeStatus, accumulatedBreakMs]);
 
   // Helper: format milliseconds to hh:mm:ss.
   const formatTime = (diff: number) => {
@@ -86,7 +84,7 @@ const EmployeePanel = () => {
   // Idle detection: if no mouse movement for 10 sec while "Working", update status to "Working Idle".
   useEffect(() => {
     let idleTimeout: NodeJS.Timeout;
-    if (isLoggedIn && currentEmployee && employeeStatus.status === "Working") {
+    if (employeeStatus.status === "Working") {
       idleTimeout = setTimeout(async () => {
         const now = new Date();
         if (now.getTime() - lastMouseMove.getTime() >= 10000) {
@@ -94,7 +92,7 @@ const EmployeePanel = () => {
             status: "Working Idle", 
             stateStartTime: Timestamp.now(),
             employeeId: currentEmployee.employeeId,
-            clockInTime: employeeStatus.clockInTime // retain clock-in time
+            clockInTime: employeeStatus.clockInTime
           };
           await setDoc(doc(db, "status", currentEmployee.employeeId), newStatus);
           setEmployeeStatus(newStatus);
@@ -102,7 +100,7 @@ const EmployeePanel = () => {
       }, 10000);
     }
     return () => clearTimeout(idleTimeout);
-  }, [lastMouseMove, isLoggedIn, employeeStatus, currentEmployee]);
+  }, [lastMouseMove, employeeStatus]);
 
   // Fetch employees on the same break (for Pee Break 1 or Pee Break 2).
   useEffect(() => {
@@ -126,12 +124,11 @@ const EmployeePanel = () => {
   useEffect(() => {
     let notifInterval: NodeJS.Timeout;
     if (
-      isLoggedIn &&
-      (employeeStatus.status === "Pee Break 1" ||
-       employeeStatus.status === "Pee Break 2" ||
-       employeeStatus.status === "Lunch" ||
-       employeeStatus.status === "Small Break" ||
-       employeeStatus.status === "Working Idle")
+      employeeStatus.status === "Pee Break 1" ||
+      employeeStatus.status === "Pee Break 2" ||
+      employeeStatus.status === "Lunch" ||
+      employeeStatus.status === "Small Break" ||
+      employeeStatus.status === "Working Idle"
     ) {
       notifInterval = setInterval(() => {
         notifyBreak();
@@ -140,7 +137,7 @@ const EmployeePanel = () => {
     return () => {
       if (notifInterval) clearInterval(notifInterval);
     };
-  }, [employeeStatus.status, isLoggedIn]);
+  }, [employeeStatus.status]);
 
   // Function: Notify (push notification & buzz sound).
   const notifyBreak = () => {
@@ -156,60 +153,8 @@ const EmployeePanel = () => {
     buzz.play().catch((err) => console.error("Error playing sound:", err));
   };
 
-  // Employee login handler.
-  const handleLogin = async () => {
-    if (!employeeId || !password) {
-      setLoginError("Please enter both Employee ID and Password");
-      return;
-    }
-    try {
-      const empDoc = await getDoc(doc(db, "employees", employeeId));
-      if (!empDoc.exists()) {
-        setLoginError("Employee not found");
-        return;
-      }
-      const empData = empDoc.data();
-      if (empData.password !== password) {
-        setLoginError("Incorrect password");
-        return;
-      }
-      if (empData.disabled) {
-        setLoginError("Your account is disabled");
-        return;
-      }
-      setCurrentEmployee({ 
-        employeeId, 
-        name: empData.name,
-        isAdmin: empData.isAdmin || false
-      });
-      setIsLoggedIn(true);
-      setLoginError("");
-      // Load existing status if available.
-      const statusDoc = await getDoc(doc(db, "status", employeeId));
-      if (statusDoc.exists()) {
-        const statusData = statusDoc.data();
-        setEmployeeStatus({
-          status: statusData.status || "Clocked Out",
-          stateStartTime: statusData.stateStartTime || null,
-          employeeId: statusData.employeeId,
-          clockInTime: statusData.clockInTime
-        });
-        if (statusData.clockInTime) {
-          setClockInTime(statusData.clockInTime.toDate());
-        }
-      }
-      // Load messages and attendance history.
-      fetchEmployeeMessages();
-      fetchAttendanceHistory();
-    } catch (error) {
-      console.error("Login error:", error);
-      setLoginError("An error occurred during login");
-    }
-  };
-
   // Clock In function.
   const clockIn = async () => {
-    if (!currentEmployee) return;
     const now = Timestamp.now();
     const nowDate = now.toDate();
     setClockInTime(nowDate);
@@ -234,7 +179,6 @@ const EmployeePanel = () => {
 
   // Clock Out function.
   const clockOut = async () => {
-    if (!currentEmployee) return;
     const now = Timestamp.now();
     try {
       await addDoc(collection(db, "attendance"), {
@@ -255,9 +199,7 @@ const EmployeePanel = () => {
 
   // Toggle Break function.
   const toggleBreak = async (breakType: string) => {
-    if (!currentEmployee) return;
     const now = Timestamp.now();
-    // If currently Working, start a break.
     if (employeeStatus.status === "Working") {
       setAccumulatedBreakMs(0);
       await addDoc(collection(db, "attendance"), {
@@ -274,9 +216,7 @@ const EmployeePanel = () => {
       await setDoc(doc(db, "status", currentEmployee.employeeId), newStatus);
       setEmployeeStatus(newStatus);
       notifyBreak();
-    } 
-    // If already on this break, then ending it to resume working.
-    else if (employeeStatus.status === breakType) {
+    } else if (employeeStatus.status === breakType) {
       const elapsed = Date.now() - employeeStatus.stateStartTime.toDate().getTime();
       setAccumulatedBreakMs(prev => prev + elapsed);
       await addDoc(collection(db, "attendance"), {
@@ -293,9 +233,7 @@ const EmployeePanel = () => {
       await setDoc(doc(db, "status", currentEmployee.employeeId), newStatus);
       setEmployeeStatus(newStatus);
       setAccumulatedBreakMs(0);
-    } 
-    // Switching from one break to a different break.
-    else if (employeeStatus.status !== "Working" && employeeStatus.status !== breakType) {
+    } else if (employeeStatus.status !== "Working" && employeeStatus.status !== breakType) {
       const elapsed = Date.now() - employeeStatus.stateStartTime.toDate().getTime();
       setAccumulatedBreakMs(prev => prev + elapsed);
       await addDoc(collection(db, "attendance"), {
@@ -322,7 +260,6 @@ const EmployeePanel = () => {
 
   // Resume Working from a Working Idle state.
   const resumeWorking = async () => {
-    if (!currentEmployee) return;
     const now = Timestamp.now();
     await addDoc(collection(db, "attendance"), {
       employeeId: currentEmployee.employeeId,
@@ -341,7 +278,6 @@ const EmployeePanel = () => {
 
   // Fetch attendance history.
   const fetchAttendanceHistory = async () => {
-    if (!currentEmployee) return;
     try {
       const q = query(
         collection(db, "attendance"), 
@@ -383,10 +319,9 @@ const EmployeePanel = () => {
 
   // Logout function.
   const handleLogout = () => {
-    setIsLoggedIn(false);
+    // In a real application, handle logout logic (clear tokens, context, etc.)
+    // Here we simply reset the state.
     setCurrentEmployee(null);
-    setEmployeeId("");
-    setPassword("");
     setEmployeeStatus({ status: "Clocked Out", stateStartTime: null });
     setClockInTime(null);
     setClockInTimer("00:00:00");
@@ -409,45 +344,6 @@ const EmployeePanel = () => {
     };
   };
 
-  // If not logged in, show the login form.
-  if (!isLoggedIn) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
-        <Card className="w-full max-w-md">
-          <CardHeader>
-            <CardTitle className="text-2xl text-center">Employee Login</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); handleLogin(); }}>
-              <div className="space-y-2">
-                <Input
-                  id="employeeId"
-                  placeholder="Employee ID"
-                  value={employeeId}
-                  onChange={(e) => setEmployeeId(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="Password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-              </div>
-              {loginError && (
-                <div className="text-red-500 text-sm">{loginError}</div>
-              )}
-              <Button type="submit" className="w-full">Login</Button>
-            </form>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  // Employee Panel (logged in)
   return (
     <div className="min-h-screen bg-gray-50 p-4">
       <div className="max-w-5xl mx-auto">
@@ -506,7 +402,6 @@ const EmployeePanel = () => {
                       <div className="font-mono text-lg">{breakTimer}</div>
                     </div>
                   </div>
-                  {/* If on Pee Break 1 or Pee Break 2, display grid of employees on that break */}
                   {(employeeStatus.status === "Pee Break 1" || employeeStatus.status === "Pee Break 2") && breakEmployees.length > 0 && (
                     <div className="mt-4">
                       <h3 className="text-lg font-medium">Employees on {employeeStatus.status}:</h3>
@@ -551,7 +446,6 @@ const EmployeePanel = () => {
                             </Button>
                           );
                         })}
-                        {/* If employee is Working Idle, show a Resume Working button */}
                         {employeeStatus.status === "Working Idle" && (
                           <Button onClick={resumeWorking} variant="default" className="col-span-2 md:col-span-4 h-12">
                             Resume Working
