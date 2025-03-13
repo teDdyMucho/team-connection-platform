@@ -375,7 +375,7 @@ const EmployeePanel = () => {
                     </div>
                     <div>
                       <div className="text-sm text-gray-500 mb-1">Break Timer</div>
-                      <div className="font-mono text-lg">{accumulatedBreakMs}</div>
+                      <div className="font-mono text-lg">{breakTimer}</div>
                     </div>
                   </div>
                   {(employeeStatus.status === "Pee Break 1" || employeeStatus.status === "Pee Break 2") && breakEmployees.length > 0 && (
