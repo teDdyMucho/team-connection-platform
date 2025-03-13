@@ -61,7 +61,7 @@ const AdminPanel = () => {
   }, []);
 
   const subscribeToActiveEmployees = () => {
-    const q = query(collection(db, "employee_status"));
+    const q = query(collection(db, "status"));
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const statuses: EmployeeStatus[] = [];
       querySnapshot.forEach((doc) => {
