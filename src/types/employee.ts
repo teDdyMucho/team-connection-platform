@@ -2,11 +2,13 @@
 import { Timestamp } from "firebase/firestore";
 
 export interface Employee {
+  id?: string;
   employeeId: string;
   name: string;
   password: string;
   basicInfo?: string;
   disabled?: boolean;
+  isAdmin?: boolean;
 }
 
 export interface EmployeeStatus {

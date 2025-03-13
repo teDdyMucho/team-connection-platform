@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { 
@@ -57,7 +58,16 @@ const AdminPanel = () => {
       const querySnapshot = await getDocs(q);
       const emps: Employee[] = [];
       querySnapshot.forEach((doc) => {
-        emps.push({ id: doc.id, ...doc.data() } as Employee);
+        const data = doc.data();
+        emps.push({ 
+          id: doc.id, 
+          employeeId: data.employeeId || '',
+          name: data.name || '',
+          password: data.password || '',
+          isAdmin: data.isAdmin || false,
+          disabled: data.disabled || false,
+          basicInfo: data.basicInfo
+        });
       });
       setEmployees(emps);
     } catch (error) {
@@ -65,8 +75,10 @@ const AdminPanel = () => {
     }
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value, type, checked } = e.target;
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value, type } = e.target;
+    const checked = type === 'checkbox' ? (e.target as HTMLInputElement).checked : undefined;
+    
     setNewEmployee(prev => ({
       ...prev,
       [name]: type === 'checkbox' ? checked : value,
@@ -109,7 +121,8 @@ const AdminPanel = () => {
     }
   };
 
-  const handleDeleteEmployee = async (id: string) => {
+  const handleDeleteEmployee = async (id: string | undefined) => {
+    if (!id) return;
     try {
       await deleteDoc(doc(db, "employees", id));
       fetchEmployees();
@@ -118,12 +131,14 @@ const AdminPanel = () => {
     }
   };
 
-  const handleEmployeeInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value, type, checked } = e.target;
+  const handleEmployeeInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value, type } = e.target;
+    const checked = type === 'checkbox' ? (e.target as HTMLInputElement).checked : undefined;
+    
     setSelectedEmployee(prev => ({
-      ...prev,
+      ...prev!,
       [name]: type === 'checkbox' ? checked : value,
-    }) as Employee);
+    }));
   };
 
   const fetchAttendanceHistory = async () => {
@@ -240,7 +255,8 @@ const AdminPanel = () => {
                         id="isAdmin"
                         name="isAdmin"
                         checked={newEmployee.isAdmin}
-                        onInput={handleInputChange}
+                        onChange={handleInputChange}
+                        className="w-4 h-4"
                       />
                     </div>
                     <div className="flex items-center space-x-2">
@@ -252,7 +268,8 @@ const AdminPanel = () => {
                         id="disabled"
                         name="disabled"
                         checked={newEmployee.disabled}
-                        onInput={handleInputChange}
+                        onChange={handleInputChange}
+                        className="w-4 h-4"
                       />
                     </div>
                     <Button type="submit" className="w-full md:col-span-2">Create Employee</Button>
@@ -312,7 +329,8 @@ const AdminPanel = () => {
                               id="isAdminEdit"
                               name="isAdmin"
                               checked={selectedEmployee.isAdmin}
-                              onInput={handleEmployeeInputChange}
+                              onChange={handleEmployeeInputChange}
+                              className="w-4 h-4"
                             />
                           </div>
                           <div className="flex items-center space-x-2">
@@ -324,7 +342,8 @@ const AdminPanel = () => {
                               id="disabledEdit"
                               name="disabled"
                               checked={selectedEmployee.disabled}
-                              onInput={handleEmployeeInputChange}
+                              onChange={handleEmployeeInputChange}
+                              className="w-4 h-4"
                             />
                           </div>
                           <Button type="submit">Update Employee</Button>
@@ -383,12 +402,12 @@ const AdminPanel = () => {
                     value={newMessage.sender}
                     onChange={handleMessageInputChange}
                   />
-                  <Input
-                    as="textarea"
+                  <textarea
                     name="message"
                     placeholder="Message"
                     value={newMessage.message}
                     onChange={handleMessageInputChange}
+                    className="flex h-20 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
                   />
                   <Button type="submit">Create Message</Button>
                 </form>
