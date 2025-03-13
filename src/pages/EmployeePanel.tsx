@@ -1,5 +1,10 @@
 import { useState, useEffect } from "react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { 
+  Tabs, 
+  TabsContent, 
+  TabsList, 
+  TabsTrigger 
+} from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -10,7 +15,7 @@ import { Employee, EmployeeStatus, AttendanceRecord, Message } from "@/types/emp
 import { Link } from "react-router-dom";
 
 const EmployeePanel = () => {
-  // Retrieve current employee from localStorage.
+  // Assume the employee is already logged in (retrieved from localStorage or context)
   const storedEmployee = localStorage.getItem("currentEmployee");
   const initialEmployee = storedEmployee ? JSON.parse(storedEmployee) : null;
   const [isLoggedIn] = useState(initialEmployee ? true : false);
@@ -24,12 +29,12 @@ const EmployeePanel = () => {
   const [attendanceHistory, setAttendanceHistory] = useState<AttendanceRecord[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
 
-  // New state for employees on the same break (for Pee Break 1 & 2)
+  // New state for listing employees on the same break (for Pee Break 1 & 2)
   const [breakEmployees, setBreakEmployees] = useState<any[]>([]);
-  // Last mouse movement time (for idle detection)
+  // State to track last mouse movement time (for idle detection)
   const [lastMouseMove, setLastMouseMove] = useState(new Date());
 
-  // Update overall Clock Timer and Break Timer every second.
+  // Timer effect: update overall clock and break timers every second.
   useEffect(() => {
     const interval = setInterval(() => {
       const now = new Date();
@@ -61,7 +66,7 @@ const EmployeePanel = () => {
            (seconds < 10 ? "0" + seconds : seconds);
   };
 
-  // Global mousemove listener.
+  // Global mouse move listener for idle detection.
   useEffect(() => {
     const handleMouseMove = () => {
       setLastMouseMove(new Date());
@@ -109,7 +114,7 @@ const EmployeePanel = () => {
     fetchBreakEmployees();
   }, [employeeStatus]);
 
-  // Push Notification & Buzz every 3 seconds when on break or Working Idle.
+  // Push Notification & Buzz: every 3 seconds when on break or Working Idle.
   useEffect(() => {
     let notifInterval: NodeJS.Timeout;
     if (
@@ -300,9 +305,7 @@ const EmployeePanel = () => {
   };
 
   const handleLogout = () => {
-    // In a real application, you might clear tokens or context.
     localStorage.removeItem("currentEmployee");
-    // Reset state (for demonstration, we simply reload the page)
     window.location.reload();
   };
 
@@ -377,6 +380,11 @@ const EmployeePanel = () => {
                       <div className="text-sm text-gray-500 mb-1">Break Timer</div>
                       <div className="font-mono text-lg">{breakTimer}</div>
                     </div>
+                  </div>
+                  {/* New label: Accumulated Break */}
+                  <div className="mt-4">
+                    <div className="text-sm text-gray-500 mb-1">Accumulated Break</div>
+                    <div className="font-mono text-lg">{formatTime(accumulatedBreakMs)}</div>
                   </div>
                   {(employeeStatus.status === "Pee Break 1" || employeeStatus.status === "Pee Break 2") && breakEmployees.length > 0 && (
                     <div className="mt-4">
