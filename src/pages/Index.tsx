@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
-const Login = () => {
+const Index = () => {
   const [employeeId, setEmployeeId] = useState("");
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
@@ -30,7 +30,13 @@ const Login = () => {
         setLoginError("Your account is disabled");
         return;
       }
-      // On successful login, navigate to the EmployeePanel page.
+      const currentEmployee = { 
+        employeeId, 
+        name: empData.name,
+        isAdmin: empData.isAdmin || false
+      };
+      // Save current employee info in localStorage
+      localStorage.setItem("currentEmployee", JSON.stringify(currentEmployee));
       navigate("/employee");
     } catch (error: any) {
       console.error("Login error:", error);
@@ -39,26 +45,30 @@ const Login = () => {
   };
 
   return (
-    <form onSubmit={handleLogin} style={{ maxWidth: "400px", margin: "0 auto" }}>
-      <h2>Employee Login</h2>
-      <input
-        type="text"
-        placeholder="Employee ID"
-        value={employeeId}
-        onChange={(e) => setEmployeeId(e.target.value)}
-        style={{ display: "block", width: "100%", marginBottom: "1rem", padding: "8px" }}
-      />
-      <input
-        type="password"
-        placeholder="Password"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        style={{ display: "block", width: "100%", marginBottom: "1rem", padding: "8px" }}
-      />
-      {loginError && <div style={{ color: "red", marginBottom: "1rem" }}>{loginError}</div>}
-      <button type="submit" style={{ padding: "10px 20px" }}>Login</button>
-    </form>
+    <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
+      <form onSubmit={handleLogin} className="max-w-md w-full space-y-4">
+        <h1 className="text-3xl font-bold text-center">Employee Login</h1>
+        <input 
+          type="text" 
+          placeholder="Employee ID" 
+          value={employeeId} 
+          onChange={(e) => setEmployeeId(e.target.value)} 
+          className="w-full p-2 border rounded"
+        />
+        <input 
+          type="password" 
+          placeholder="Password" 
+          value={password} 
+          onChange={(e) => setPassword(e.target.value)} 
+          className="w-full p-2 border rounded"
+        />
+        {loginError && <p className="text-red-500 text-center">{loginError}</p>}
+        <button type="submit" className="w-full p-2 bg-blue-600 text-white rounded">
+          Login
+        </button>
+      </form>
+    </div>
   );
 };
 
-export default Login;
+export default Index;
